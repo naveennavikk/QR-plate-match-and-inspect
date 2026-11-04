@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#10151f">
+  <title>QR Plate Match and Inspect — Test</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <main class="shell">
+    <header>
+      <div class="logo" aria-hidden="true">QR</div>
+      <div>
+        <p class="eyebrow">LOCAL TEST INTERFACE</p>
+        <h1>QR Plate Match &amp; Inspect</h1>
+        <p class="muted">Upload reference and property images. Matching starts when you submit.</p>
+      </div>
+    </header>
+
+    <form id="batch-form">
+      <div class="section-heading">
+        <div><h2>Image pairs</h2><p class="muted">Add up to 20 properties to process together.</p></div>
+        <button id="add-pair" class="button secondary" type="button">+ Add pair</button>
+      </div>
+      <div id="pairs"></div>
+      <div class="submit-row">
+        <span id="progress" class="muted">Each pair is evaluated independently.</span>
+        <button id="submit" class="button primary" type="submit">Check images</button>
+      </div>
+      <div id="results" class="results" aria-live="polite"></div>
+    </form>
+    <footer>Local demo interface. The images are sent to this app’s matching API on port 8000.</footer>
+  </main>
+  <template id="pair-template">
+    <section class="pair-card">
+      <div class="pair-top"><div><span class="pair-number"></span><span class="muted">Property image pair</span></div><button class="remove" type="button" aria-label="Remove image pair">Remove</button></div>
+      <label class="id-label">House ID <span class="optional">optional</span><input class="house-id" type="text" placeholder="e.g. 7044"></label>
+      <div class="upload-grid">
+        <label class="upload">Reference QR plate image<input class="qr-file" type="file" accept="image/*" required><img class="preview qr-preview hidden" alt="Reference plate preview"></label>
+        <label class="upload">Property image<input class="house-file" type="file" accept="image/*" required><img class="preview house-preview hidden" alt="Property preview"></label>
+      </div>
+    </section>
+  </template>
+  <script src="/static/app.js" defer></script>
+</body>
+</html>

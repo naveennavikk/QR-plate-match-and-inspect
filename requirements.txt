@@ -6,6 +6,6 @@ accelerate
 opencv-python
 numpy
 pillow
-streamlit
-pandas
+fastapi
+uvicorn[standard]
 ultralytics

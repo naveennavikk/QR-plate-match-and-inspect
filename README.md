@@ -1,19 +1,71 @@
-# QR Plate Matching + Inspector
+# QR Plate Match and Inspect API
 
-This combined Streamlit application runs the reference plate matcher as soon as both images are uploaded. It asks for a reference plate image and one property image. The matcher combines multiscale visual matching with Grounding DINO QR-code localization, then compares the surrounding background at the located candidate. The background check includes color, texture direction, and surface detail when the candidate is at a similar scale. It does not read QR payloads or printed plate IDs. Blurry or too-small source images, or a low-confidence QR localization, show REQUIRED MANUAL REVIEW. Confident matches produce ACCEPT or REJECT based on the background check. Only ACCEPT runs the QR plate inspector on the reference plate image.
+This repository contains the FastAPI service, a small HTML/CSS/JavaScript test page, the image matcher, and trained inspector weights. Your team's backend can call the same API endpoints. The service compares the reference QR plate and its surrounding background with the property image. If they match, the inspector analyzes the reference plate image.
 
-## Start
+## Run the API
 
-Install the combined dependencies in a Python environment:
+Install the dependencies in your Python environment:
 
 ```powershell
 python -m pip install -r requirements.txt
 ```
 
-Run the application:
+From this folder, start the service:
 
 ```powershell
-streamlit run app.py
+uvicorn api:app --host 0.0.0.0 --port 8000
 ```
 
-The app folder contains the matcher code and inspector model weights it needs, so it can run independently of the original project folders.
+Open `http://localhost:8000` to test one or multiple image pairs in the browser. The interactive API schema is at `http://localhost:8000/docs`; health check: `http://localhost:8000/health`.
+
+## Backend request
+
+Send `POST http://localhost:8000/api/inspect` with JSON containing the two required images. Each image can be raw base64 or a `data:image/...;base64,...` string. Optional `houseId` and `userId` values are echoed back for record correlation. Other fields in the existing property record may also be included and are ignored by the image analysis.
+
+```json
+{
+  "houseId": 7044,
+  "QRCodeImage": "<base64 reference plate image>",
+  "HouseImage": "<base64 property image>"
+}
+```
+
+For multiple pairs in one request, send `POST http://localhost:8000/api/inspect/batch` with an `items` array. Each item uses the same record shape. A batch can contain up to 20 pairs; results are returned in the same order and include the zero-based `index` plus any supplied IDs. A bad image in one item is reported for that item and does not stop the other pairs from being processed.
+
+```json
+{
+  "items": [
+    {
+      "houseId": 7044,
+      "QRCodeImage": "<base64 reference plate image 1>",
+      "HouseImage": "<base64 property image 1>"
+    },
+    {
+      "houseId": 7045,
+      "QRCodeImage": "<base64 reference plate image 2>",
+      "HouseImage": "<base64 property image 2>"
+    }
+  ]
+}
+```
+
+## Response
+
+`QRStatus` follows the existing application's convention:
+
+- `1`: approve; `Remark` is empty.
+- `0`: reject; `Remark` explains the rejection.
+- `null`: manual review; do not update the existing record. The existing `Remark` is returned unchanged when supplied.
+
+Example automatic rejection:
+
+```json
+{
+  "QRStatus": 0,
+  "Remark": "Reference plate or its surrounding background does not match the property image.",
+  "manual_review": false,
+  "houseId": 7044
+}
+```
+
+The calling backend should persist `QRStatus` and `Remark` only for automatic results and leave the record unchanged when `QRStatus` is `null`. It can set `QRStatusDate` and `modified` according to its own record-update rules.
