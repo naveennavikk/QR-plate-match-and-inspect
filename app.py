@@ -36,7 +36,7 @@ CLASS_TO_RULE = {
 
 st.set_page_config(page_title="QR Plate Matching + Inspector", layout="wide")
 st.title("QR Plate Matching + Inspector")
-st.write("Match the property photo against the reference plate. After an ACCEPT, the inspector checks the reference plate image.")
+st.write("Match the property photo against the reference plate. A match continues to inspection of the reference plate image.")
 
 
 @st.cache_resource
@@ -158,7 +158,7 @@ if reference_file and property_file:
             st.error("REJECT — Reference plate and its background were not confirmed in the property image. The inspector was not run.")
         st.stop()
 
-    st.success("ACCEPT — Reference plate is present. Continuing to the inspector with the reference plate image.")
+    st.success("Reference plate match confirmed. Continuing to the inspector with the reference plate image.")
     if match_result.get("background_similarity") is not None:
         st.caption(f"QR plate and surrounding background similarity: {match_result['background_similarity']:.0%}")
     available_models = [(name, path) for name, path in MODEL_PATHS.items() if path.exists()]
