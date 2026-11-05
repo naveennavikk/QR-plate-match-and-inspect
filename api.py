@@ -3,16 +3,18 @@
 import base64
 import binascii
 import os
+from concurrent.futures import ThreadPoolExecutor
 from functools import lru_cache
 from io import BytesIO
 from pathlib import Path
+from threading import BoundedSemaphore
 
 import numpy as np
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, RootModel
 from PIL import Image, UnidentifiedImageError
 from ultralytics import YOLO
 
@@ -24,6 +26,16 @@ MODEL_PATHS = [
     ("YOLO11n", APP_ROOT / "models" / "yolo11n_cls_best.pt"),
 ]
 MAX_IMAGE_BYTES = 25 * 1024 * 1024
+INFERENCE_WORKERS = max(
+    1,
+    int(os.getenv("QR_INFERENCE_WORKERS", str(min(4, os.cpu_count() or 1)))),
+)
+MAX_PENDING_PAIRS = max(
+    INFERENCE_WORKERS,
+    int(os.getenv("QR_MAX_PENDING_PAIRS", str(max(100, INFERENCE_WORKERS * 4)))),
+)
+INFERENCE_POOL = ThreadPoolExecutor(max_workers=INFERENCE_WORKERS, thread_name_prefix="qr-inference")
+PENDING_SLOTS = BoundedSemaphore(MAX_PENDING_PAIRS)
 
 CLASS_TO_REMARK = {
     "gap between plate and wall": "Gap between plate and wall; make sure the plate sits flush against the wall.",
@@ -50,7 +62,11 @@ class ImagePair(BaseModel):
 
 
 class BatchRequest(BaseModel):
-    items: list[ImagePair] = Field(min_length=1, max_length=20)
+    items: list[ImagePair] = Field(min_length=1, max_length=100)
+
+
+class BatchRecordList(RootModel[list[ImagePair]]):
+    root: list[ImagePair] = Field(min_length=1, max_length=100)
 
 
 app = FastAPI(title="QR Plate Match and Inspect API", version="1.0.0")
@@ -157,7 +173,23 @@ def frontend():
 
 @app.post("/api/inspect")
 def inspect_pair(images: ImagePair):
-    return process_pair(images)
+    future = submit_pair(images)
+    if future is None:
+        raise HTTPException(503, "Image processing is at capacity; retry this request shortly.")
+    return future.result()
+
+
+def submit_pair(images: ImagePair):
+    """Submit one pair to the bounded shared inference pool, or decline if full."""
+    if not PENDING_SLOTS.acquire(blocking=False):
+        return None
+    try:
+        future = INFERENCE_POOL.submit(process_pair, images)
+    except Exception:
+        PENDING_SLOTS.release()
+        raise
+    future.add_done_callback(lambda _future: PENDING_SLOTS.release())
+    return future
 
 
 def process_pair(images: ImagePair):
@@ -187,28 +219,25 @@ def process_pair(images: ImagePair):
 
 
 @app.post("/api/inspect/batch")
-def inspect_batch(batch: BatchRequest):
-    """Process up to 20 independent property image pairs in request order."""
+def inspect_batch(batch: BatchRequest | BatchRecordList):
+    """Process up to 100 pairs concurrently within the shared inference limit."""
+    items = batch.items if isinstance(batch, BatchRequest) else batch.root
     results = []
-    for index, images in enumerate(batch.items):
+    submitted = []
+    for index, images in enumerate(items):
+        submitted.append((index, images, submit_pair(images)))
+
+    for index, images, future in submitted:
         try:
-            item_result = process_pair(images)
+            if future is None:
+                raise HTTPException(503, "Image processing is at capacity; retry this item shortly.")
+            item_result = future.result()
             item_result["success"] = True
         except HTTPException as exc:
-            item_result = result(
-                images,
-                qr_status=None,
-                remark=images.Remark,
-                manual_review=False,
-            )
+            item_result = result(images, qr_status=None, remark=images.Remark)
             item_result.update({"success": False, "error": str(exc.detail)})
         except Exception as exc:
-            item_result = result(
-                images,
-                qr_status=None,
-                remark=images.Remark,
-                manual_review=False,
-            )
+            item_result = result(images, qr_status=None, remark=images.Remark)
             item_result.update({"success": False, "error": f"Image analysis failed: {exc}"})
         item_result["index"] = index
         results.append(item_result)
@@ -222,14 +251,13 @@ def batch_endpoint_help():
         "message": "This endpoint processes images with POST. In Postman, choose Body > raw > JSON.",
         "method": "POST",
         "url": "/api/inspect/batch",
-        "maximum_pairs_per_request": 20,
-        "body_example": {
-            "items": [
-                {
-                    "houseId": 7044,
-                    "QRCodeImage": "<base64 reference plate image>",
-                    "HouseImage": "<base64 property image>",
-                }
-            ]
-        },
+        "maximum_pairs_per_request": 100,
+        "body_example": [
+            {
+                "houseId": 7044,
+                "QRCodeImage": "<base64 reference plate image>",
+                "HouseImage": "<base64 property image>",
+            }
+        ],
+        "also_accepts_items_wrapper": True,
     }

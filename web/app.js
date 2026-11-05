@@ -5,7 +5,7 @@ const addButton=document.querySelector("#add-pair");
 const submitButton=document.querySelector("#submit");
 const results=document.querySelector("#results");
 const progress=document.querySelector("#progress");
-const maxPairs=20;
+const maxPairs=100;
 
 function refreshRows(){
   [...list.querySelectorAll(".pair-card")].forEach((card,index)=>{

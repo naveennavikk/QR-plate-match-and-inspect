@@ -30,23 +30,21 @@ Send `POST http://localhost:8000/api/inspect` with JSON containing the two requi
 }
 ```
 
-For multiple pairs in one request, send `POST http://localhost:8000/api/inspect/batch` with an `items` array. Each item uses the same record shape. A batch can contain up to 20 pairs; results are returned in the same order and include the zero-based `index` plus any supplied IDs. A bad image in one item is reported for that item and does not stop the other pairs from being processed.
+For multiple pairs in one request, send `POST http://localhost:8000/api/inspect/batch` with the frontend's JSON array directly. Each item uses the same record shape. The endpoint also accepts the wrapped `{"items": [...]}` format. A batch can contain up to 100 pairs; results are returned in the same order and include the zero-based `index` plus any supplied IDs. A bad image in one item is reported for that item and does not stop the other pairs from being processed.
 
 ```json
-{
-  "items": [
-    {
-      "houseId": 7044,
-      "QRCodeImage": "<base64 reference plate image 1>",
-      "HouseImage": "<base64 property image 1>"
-    },
-    {
-      "houseId": 7045,
-      "QRCodeImage": "<base64 reference plate image 2>",
-      "HouseImage": "<base64 property image 2>"
-    }
-  ]
-}
+[
+  {
+    "houseId": 7044,
+    "QRCodeImage": "<base64 reference plate image 1>",
+    "HouseImage": "<base64 property image 1>"
+  },
+  {
+    "houseId": 7045,
+    "QRCodeImage": "<base64 reference plate image 2>",
+    "HouseImage": "<base64 property image 2>"
+  }
+]
 ```
 
 ## Response
@@ -69,3 +67,5 @@ Example automatic rejection:
 ```
 
 The calling backend should persist `QRStatus` and `Remark` only for automatic results and leave the record unchanged when `QRStatus` is `null`. It can set `QRStatusDate` and `modified` according to its own record-update rules.
+
+See [LOAD_TEST_REPORT.md](LOAD_TEST_REPORT.md) for the local synthetic throughput and latency measurements, test limitations, and recommended scale tests.
